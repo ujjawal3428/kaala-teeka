@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "441510006418",
+    "project_id": "kaala-teeka-2c7d3",
+    "storage_bucket": "kaala-teeka-2c7d3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:441510006418:android:380f056f0ebca30ae2204b",
+        "android_client_info": {
+          "package_name": "com.example.kaala_teeka_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCm_WpaBYMNjPbrl5HTMQ3hcMphT_JHUm4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
