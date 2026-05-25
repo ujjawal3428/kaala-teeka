@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/order_store.dart';
 import '../models/order_model.dart';
+import '../services/firebase_service.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -12,20 +13,16 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   String _filterStatus = 'all';
 
-  List<OrderModel> get _filteredOrders {
-    final orders = OrderStore.instance.orders;
-    if (_filterStatus == 'all') return orders.toList();
-    return orders.where((o) => o.status == _filterStatus).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Admin Dashboard',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Admin Dashboard',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -37,34 +34,66 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildStats(),
-          _buildFilters(),
-          Expanded(child: _buildOrderList()),
-        ],
+      body: StreamBuilder<List<OrderModel>>(
+        stream: FirebaseService.instance.streamOrders(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFB03A2E)),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error loading orders: ${snapshot.error}',
+                style: const TextStyle(color: Colors.white54),
+              ),
+            );
+          }
+
+          final orders = snapshot.data ?? [];
+          final filteredOrders = _filterStatus == 'all'
+              ? orders
+              : orders.where((o) => o.status == _filterStatus).toList();
+
+          return Column(
+            children: [
+              _buildStats(orders),
+              _buildFilters(),
+              Expanded(child: _buildOrderList(filteredOrders)),
+            ],
+          );
+        },
       ),
     );
   }
 
   // ── Summary Stats ────────────────────────────────────────────
-  Widget _buildStats() {
-    final store = OrderStore.instance;
+  Widget _buildStats(List<OrderModel> orders) {
+    double totalRevenue = 0;
+    Map<String, int> ordersByCity = {};
+
+    for (final order in orders) {
+      totalRevenue += order.totalAmount;
+      ordersByCity[order.city] = (ordersByCity[order.city] ?? 0) + 1;
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          _statCard('Total Orders', '${store.totalOrders}', Icons.receipt_long),
+          _statCard('Total Orders', '${orders.length}', Icons.receipt_long),
           const SizedBox(width: 10),
           _statCard(
             'Revenue',
-            '₹${store.totalRevenue.toStringAsFixed(0)}',
+            '₹${totalRevenue.toStringAsFixed(0)}',
             Icons.currency_rupee,
           ),
           const SizedBox(width: 10),
           _statCard(
             'Cities',
-            '${store.ordersByCity.length}',
+            '${ordersByCity.length}',
             Icons.location_on_outlined,
           ),
         ],
@@ -85,14 +114,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             Icon(icon, color: const Color(0xFFB03A2E), size: 22),
             const SizedBox(height: 6),
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold)),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 10)),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white54, fontSize: 10),
+            ),
           ],
         ),
       ),
@@ -115,26 +149,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
             onTap: () => setState(() => _filterStatus = s),
             child: Container(
               margin: const EdgeInsets.only(right: 8),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: selected
                     ? const Color(0xFFB03A2E)
                     : const Color(0xFF1C1C1C),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: selected
-                        ? const Color(0xFFB03A2E)
-                        : const Color(0xFF2A2A2A)),
+                  color: selected
+                      ? const Color(0xFFB03A2E)
+                      : const Color(0xFF2A2A2A),
+                ),
               ),
               child: Text(
                 s[0].toUpperCase() + s.substring(1),
                 style: TextStyle(
-                    color: selected ? Colors.white : Colors.white54,
-                    fontSize: 12,
-                    fontWeight: selected
-                        ? FontWeight.bold
-                        : FontWeight.normal),
+                  color: selected ? Colors.white : Colors.white54,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
             ),
           );
@@ -144,9 +177,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   // ── Order List ───────────────────────────────────────────────
-  Widget _buildOrderList() {
-    final orders = _filteredOrders;
-
+  Widget _buildOrderList(List<OrderModel> orders) {
     if (orders.isEmpty) {
       return const Center(
         child: Column(
@@ -154,8 +185,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             Icon(Icons.inbox_outlined, color: Colors.white24, size: 60),
             SizedBox(height: 12),
-            Text('No orders yet',
-                style: TextStyle(color: Colors.white38, fontSize: 16)),
+            Text(
+              'No orders yet',
+              style: TextStyle(color: Colors.white38, fontSize: 16),
+            ),
           ],
         ),
       );
@@ -166,9 +199,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
       itemCount: orders.length,
       itemBuilder: (_, i) => _OrderCard(
         order: orders[i],
-        onStatusChanged: (newStatus) {
-          OrderStore.instance.updateStatus(orders[i].id, newStatus);
-          setState(() {});
+        onStatusChanged: (newStatus) async {
+          try {
+            await FirebaseService.instance.updateOrderStatus(
+              orders[i].id,
+              newStatus,
+            );
+            OrderStore.instance.updateStatus(orders[i].id, newStatus);
+            if (mounted) setState(() {});
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error updating status: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
         },
       ),
     );
@@ -215,14 +263,17 @@ class _OrderCard extends StatelessWidget {
                 child: Text(
                   order.id,
                   style: const TextStyle(
-                      color: Color(0xFFB03A2E),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
+                    color: Color(0xFFB03A2E),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
                 decoration: BoxDecoration(
                   color: _statusColor(order.status).withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
@@ -231,9 +282,10 @@ class _OrderCard extends StatelessWidget {
                 child: Text(
                   order.status.toUpperCase(),
                   style: TextStyle(
-                      color: _statusColor(order.status),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold),
+                    color: _statusColor(order.status),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -262,8 +314,7 @@ class _OrderCard extends StatelessWidget {
               const Spacer(),
               Text(
                 _formatDate(order.orderDate),
-                style:
-                    const TextStyle(color: Colors.white38, fontSize: 11),
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
               ),
             ],
           ),
@@ -272,8 +323,10 @@ class _OrderCard extends StatelessWidget {
           // Update status dropdown
           Row(
             children: [
-              const Text('Update Status:',
-                  style: TextStyle(color: Colors.white54, fontSize: 12)),
+              const Text(
+                'Update Status:',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               const SizedBox(width: 10),
               DropdownButton<String>(
                 value: order.status,
@@ -281,11 +334,12 @@ class _OrderCard extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 12),
                 underline: const SizedBox(),
                 items: ['pending', 'confirmed', 'shipped', 'delivered']
-                    .map((s) => DropdownMenuItem(
-                          value: s,
-                          child: Text(
-                              s[0].toUpperCase() + s.substring(1)),
-                        ))
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(s[0].toUpperCase() + s.substring(1)),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) {
                   if (v != null) onStatusChanged(v);
@@ -305,8 +359,10 @@ class _OrderCard extends StatelessWidget {
         Icon(icon, size: 14, color: Colors.white38),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(text,
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
         ),
       ],
     );
@@ -319,11 +375,14 @@ class _OrderCard extends StatelessWidget {
         color: const Color(0xFF0D0D0D),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(label,
-          style: const TextStyle(
-              color: Color(0xFFB03A2E),
-              fontSize: 12,
-              fontWeight: FontWeight.bold)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFB03A2E),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 

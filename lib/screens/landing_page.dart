@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kaala_teeka_app/screens/cart_page.dart';
 import '../models/order_model.dart';
 import '../models/order_store.dart';
+import '../services/firebase_service.dart' as firebase;
 import '../widgets/ingredient_chip.dart';
 import '../widgets/benefit_card.dart';
 
@@ -78,7 +80,7 @@ class _LandingPageState extends State<LandingPage> {
     }
   }
 
-  void _placeOrder() {
+  void _placeOrder() async {
     if (!_formKey.currentState!.validate()) return;
 
     final order = OrderModel(
@@ -94,41 +96,85 @@ class _LandingPageState extends State<LandingPage> {
       orderDate: DateTime.now(),
     );
 
-    OrderStore.instance.addOrder(order);
+    try {
+      // Debug: Log order before saving
+      print('🔷 Saving order to Firebase: ${order.id}');
 
-    // Reset form
-    _formKey.currentState!.reset();
-    _nameCtrl.clear();
-    _phoneCtrl.clear();
-    _addressCtrl.clear();
-    _cityCtrl.clear();
-    _stateCtrl.clear();
-    _pincodeCtrl.clear();
-    setState(() {
-      _cartQty = 0;
-      _orderQty = 1;
-    });
+      // Save order to Firebase
+      await firebase.FirebaseService.instance.saveOrder(order);
+      print('✅ Order saved to Firebase successfully!');
 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Order Placed! 🎉',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Order ID: ${order.id}\nAmount: ₹${order.totalAmount.toStringAsFixed(0)}\n\nWe will call you shortly to confirm.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFB03A2E))),
+      // Also save to local store
+      OrderStore.instance.addOrder(order);
+      print('✅ Order saved to local store');
+
+      // Reset form
+      _formKey.currentState!.reset();
+      _nameCtrl.clear();
+      _phoneCtrl.clear();
+      _addressCtrl.clear();
+      _cityCtrl.clear();
+      _stateCtrl.clear();
+      _pincodeCtrl.clear();
+      setState(() {
+        _cartQty = 0;
+        _orderQty = 1;
+      });
+      print('✅ Form cleared');
+
+      if (!mounted) return;
+
+      // Show success dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text(
+            'Order Placed! 🎉',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-        ],
-      ),
-    );
+          content: Text(
+            'Order ID: ${order.id}\nAmount: ₹${order.totalAmount.toStringAsFixed(0)}\n\nWe will call you shortly to confirm.',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'OK',
+                style: TextStyle(
+                  color: Color(0xFFB03A2E),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      // Show snackbar confirmation
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('✅ Order placed successfully!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      print('❌ Error placing order: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   @override
@@ -175,17 +221,10 @@ class _LandingPageState extends State<LandingPage> {
                 color: Colors.white,
               ),
               onPressed: () {
-                if (_cartQty > 0) {
-                  // scroll to order form
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '$_cartQty item(s) in cart. Fill the form below to order.',
-                      ),
-                      backgroundColor: const Color(0xFFB03A2E),
-                    ),
-                  );
-                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CartPage()),
+                );
               },
             ),
             if (_cartQty > 0)
@@ -254,7 +293,10 @@ class _LandingPageState extends State<LandingPage> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.asset('assets/images/photo1.jpg', fit: BoxFit.cover),
+              child: Image.asset(
+                'assets/images/photo1.jpg',
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           const SizedBox(height: 24),

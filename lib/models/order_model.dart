@@ -38,6 +38,7 @@ class OrderModel {
       'totalAmount': totalAmount,
       'orderDate': orderDate.toIso8601String(),
       'status': status,
+      'createdAt': DateTime.now().toIso8601String(),
     };
   }
 }
